@@ -6,5 +6,4 @@ dist/
 prototype/backup-*/
 docs/review-evidence/
 .DS_Store
-video/out/
-video/work/
+video/
