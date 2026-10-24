@@ -575,7 +575,7 @@ export function SchedulePage({ initialZone }: { initialZone?: number }) {
       )}
 
       {orphans > 0 && (
-        <div className="notice info small">
+        <div className="notice with-action info small">
           <span style={{ flex: 1 }}>
             {orphans === 1 ? 'Hay 1 cambio' : `Hay ${orphans} cambios`} sin zonas o sin días (quizá de la app oficial). No hacen nada, pero ocupan sitio.
           </span>

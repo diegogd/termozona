@@ -220,7 +220,7 @@ export function Home({ onOpenZone }: { onOpenZone: (zone: number) => void }) {
       </header>
 
       {offline && hasData && (
-        <div className="notice error offline-banner" role="status">
+        <div className="notice with-action error offline-banner" role="status">
           <span style={{ flex: 1 }}>
             Sin conexión con tu calefacción{s.lastUpdate ? `. Últimos datos: ${relativeTime(s.lastUpdate)}` : ''}. Los datos pueden no estar al día y no se
             pueden hacer cambios.

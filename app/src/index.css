@@ -289,9 +289,14 @@ p {
   border-radius: var(--radius-sm);
   padding: 12px 14px;
   font-size: 0.95rem;
+}
+
+/* A notice with a button next to its text. Plain notices stay as normal text,
+   so inline <b> and links flow with the sentence. */
+.notice.with-action {
   display: flex;
   gap: 10px;
-  align-items: flex-start;
+  align-items: center;
 }
 
 .notice.error {
