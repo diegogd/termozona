@@ -1,8 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#FFE8D9"/>
-  <g fill="none" stroke="#1F2933" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
-    <path d="m13 30 19-16 19 16"/><path d="M18 28v23h28V28"/>
-  </g>
-  <path d="M32 24c1 5 5 7 5 12a5 5 0 0 1-10 0c0-3 2-5 5-12Z" fill="#E8590C"/>
-  <path d="M25 43c5-3 9-3 14 0M25 47c5-3 9-3 14 0" fill="none" stroke="#1C7ED6" stroke-width="2.5" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#EDF7FF"/><stop offset="1" stop-color="#FFE8D9"/></linearGradient><linearGradient id="dial" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#1C7ED6"/><stop offset=".46" stop-color="#74B5D9"/><stop offset=".56" stop-color="#E9A663"/><stop offset="1" stop-color="#E8590C"/></linearGradient><linearGradient id="flame" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#FF9C45"/><stop offset="1" stop-color="#D74A0A"/></linearGradient></defs>
+<rect width="1024" height="1024" fill="url(#bg)"/><circle cx="795" cy="205" r="255" fill="#FFFFFF" opacity=".22"/><circle cx="158" cy="824" r="270" fill="#7CC3FF" opacity=".11"/><circle cx="512" cy="512" r="291" fill="#FFFFFF" opacity=".87"/><circle cx="512" cy="512" r="261" fill="none" stroke="#C9D4D9" stroke-width="52" opacity=".64"/><path d="M307 684 A260 260 0 1 1 717 684" fill="none" stroke="url(#dial)" stroke-width="56" stroke-linecap="round"/><circle cx="512" cy="512" r="190" fill="#F8FAFB"/><path d="M391 502 512 405 633 502v132H391Z" fill="#263948"/><path d="M365 507 512 388 659 507" fill="none" stroke="#263948" stroke-width="35" stroke-linecap="round" stroke-linejoin="round"/><path d="M513 476c8 39 56 61 56 105 0 34-25 57-57 57s-58-25-58-57c0-36 21-61 59-105Z" fill="url(#flame)"/><path d="M511 548c2 18 24 25 24 42 0 12-10 22-23 22s-23-10-23-22c0-14 10-28 22-42Z" fill="#FFF4E9"/>
 </svg>
