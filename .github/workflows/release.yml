@@ -1,0 +1,75 @@
+name: Release APK
+
+# Push a tag like v1.2.3 to build, sign and publish TermoZona-v1.2.3.apk.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          IFS=. read -r MAJOR MINOR PATCH <<< "${VERSION%%-*}"
+          echo "VERSION_NAME=$VERSION" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$((MAJOR * 10000 + MINOR * 100 + PATCH))" >> "$GITHUB_ENV"
+
+      - name: Tests
+        run: |
+          npm ci
+          npx vitest run
+
+      - name: Build web app
+        run: |
+          npm run build
+          npx cap sync android
+
+      - name: Signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.TERMOZONA_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then echo "::error::Falta el secreto TERMOZONA_KEYSTORE_B64"; exit 1; fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "TERMOZONA_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build signed APK
+        working-directory: app/android
+        env:
+          TERMOZONA_KEYSTORE_PASSWORD: ${{ secrets.TERMOZONA_KEYSTORE_PASSWORD }}
+          TERMOZONA_KEY_ALIAS: termozona
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/out/TermoZona-v$VERSION_NAME.apk"
+          cd "$GITHUB_WORKSPACE/out" && sha256sum *.apk > SHA256SUMS.txt
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "$GITHUB_WORKSPACE"/out/* \
+            --title "TermoZona $VERSION_NAME" \
+            --notes-file "$GITHUB_WORKSPACE/docs/release-notes.md" \
+            --generate-notes

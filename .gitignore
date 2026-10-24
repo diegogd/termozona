@@ -1,0 +1,8 @@
+.env
+prototype/project/
+__pycache__/
+node_modules/
+dist/
+prototype/backup-*/
+docs/review-evidence/
+.DS_Store
