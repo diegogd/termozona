@@ -637,7 +637,7 @@ export class Controller {
   /** Re-enables every change, for schedules paused elsewhere (e.g. by another phone). */
   async enableAllChanges(): Promise<boolean> {
     const events = this.state.schedule?.events ?? []
-    return this.saveSchedule(events.map((e) => ({ ...e, enabled: true })))
+    return this.saveSchedule(events.map((e) => ({ ...e, enabled: true })), { text: 'Horario activado.' })
   }
 
   /**
@@ -649,7 +649,8 @@ export class Controller {
     const setpoints: Record<number, number> = {}
     for (const z of Object.values(this.state.device.zones)) if (z.setpoint !== undefined) setpoints[z.index] = z.setpoint
     const away: AwayState = { since: Date.now(), temp, enabled: events.filter((e) => e.enabled).map(eventSignature), setpoints }
-    if (events.some((e) => e.enabled) && !(await this.saveSchedule(events.map((e) => ({ ...e, enabled: false }))))) return false
+    const paused = events.map((e) => ({ ...e, enabled: false }))
+    if (events.some((e) => e.enabled) && !(await this.saveSchedule(paused, { text: `Modo ausencia activado: todas las zonas a ${temp}° y el horario en pausa.` }))) return false
     for (const z of Object.keys(setpoints).map(Number)) this.setSetpoint(z, temp)
     this.set({ away })
     await this.persist()
@@ -662,7 +663,7 @@ export class Controller {
     if (!away) return true
     const events = this.state.schedule?.events ?? []
     const restored = events.map((e) => ({ ...e, enabled: e.enabled || away.enabled.includes(eventSignature(e)) }))
-    if (away.enabled.length && !(await this.saveSchedule(restored))) return false
+    if (away.enabled.length && !(await this.saveSchedule(restored, { text: 'Bienvenido. Tu horario vuelve a funcionar.' }))) return false
     // Use what the schedule says for right now; fall back to the temperature before leaving.
     const now = new Date()
     const weekMinute = weekday(now) * 1440 + now.getHours() * 60 + now.getMinutes()

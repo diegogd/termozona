@@ -21,6 +21,9 @@ interface OrkliNetPlugin {
   ): Promise<PluginListenerHandle>
   addListener(event: 'socketClosed', fn: (e: { id: string; reason?: string }) => void): Promise<PluginListenerHandle>
   addListener(event: 'provisionProgress', fn: (e: { percent: number }) => void): Promise<PluginListenerHandle>
+  addListener(event: 'updateProgress', fn: (e: { percent: number }) => void): Promise<PluginListenerHandle>
+  installUpdate(o: { url: string }): Promise<void>
+  openUrl(o: { url: string }): Promise<void>
 }
 
 const OrkliNet = registerPlugin<OrkliNetPlugin>('OrkliNet')
@@ -131,4 +134,28 @@ export const capacitorBridge: Bridge = {
       await h.remove()
     }
   },
+}
+
+/** Opens a link in the phone's browser; in the web build, a new tab. */
+export async function openUrl(url: string): Promise<void> {
+  if (!isNativePlatform()) {
+    window.open(url, '_blank')
+    return
+  }
+  await OrkliNet.openUrl({ url })
+}
+
+export type InstallResult = 'started' | 'permission' | 'error'
+
+/** Downloads an APK and opens the system installer. */
+export async function installUpdate(url: string, onProgress: (pct: number) => void): Promise<InstallResult> {
+  const h = await OrkliNet.addListener('updateProgress', (e) => onProgress(e.percent))
+  try {
+    await OrkliNet.installUpdate({ url })
+    return 'started'
+  } catch (e) {
+    return (e as { code?: string }).code === 'INSTALL_PERMISSION' ? 'permission' : 'error'
+  } finally {
+    await h.remove()
+  }
 }

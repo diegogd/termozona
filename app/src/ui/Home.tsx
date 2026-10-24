@@ -210,7 +210,8 @@ export function Home({ onOpenZone }: { onOpenZone: (zone: number) => void }) {
   const [allOff, setAllOff] = useState(false)
   const anyOn = views.some((v) => v.on)
   const hasData = views.some((v) => v.on !== undefined)
-  const offline = s.link !== 'online'
+  // 'connecting' right after opening the app is not a lost connection.
+  const offline = s.link === 'offline' || s.link === 'reconnecting'
 
   return (
     <main className="page">

@@ -2,6 +2,9 @@ package es.termozona.app;
 
 import android.Manifest;
 import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
+import android.provider.Settings;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
@@ -9,6 +12,8 @@ import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.util.Base64;
+
+import androidx.core.content.FileProvider;
 
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -27,6 +32,7 @@ import org.json.JSONObject;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -435,6 +441,82 @@ public class OrkliNetPlugin extends Plugin {
                 call.reject(e.getMessage(), e);
             } finally {
                 if (sock != null) sock.close();
+            }
+        });
+    }
+
+    // ---- updates -----------------------------------------------------------------
+
+    /** Opens a link in the phone's browser (not an in-app tab, which cannot download APKs). */
+    @PluginMethod
+    public void openUrl(PluginCall call) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(call.getString("url")));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject(e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Downloads a release APK into the cache and hands it to the system
+     * installer. The installer itself checks that the signature matches the
+     * installed app. Rejects with code "INSTALL_PERMISSION" after opening the
+     * "install unknown apps" setting when TermoZona is not allowed yet.
+     */
+    @PluginMethod
+    public void installUpdate(PluginCall call) {
+        String url = call.getString("url");
+        Context ctx = getContext();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !ctx.getPackageManager().canRequestPackageInstalls()) {
+            Intent settings = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + ctx.getPackageName()));
+            settings.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(settings);
+            call.reject("Falta permiso para instalar aplicaciones", "INSTALL_PERMISSION");
+            return;
+        }
+        io.execute(() -> {
+            HttpURLConnection conn = null;
+            try {
+                File dir = new File(ctx.getCacheDir(), "updates");
+                if (!dir.exists() && !dir.mkdirs()) throw new IOException("No se puede crear " + dir);
+                File apk = new File(dir, "TermoZona-update.apk");
+                conn = (HttpURLConnection) new URL(url).openConnection();
+                conn.setConnectTimeout(TIMEOUT_MS);
+                conn.setReadTimeout(TIMEOUT_MS * 2);
+                conn.setInstanceFollowRedirects(true);
+                int status = conn.getResponseCode();
+                if (status != 200) throw new IOException("HTTP " + status);
+                long total = conn.getContentLengthLong();
+                try (InputStream in = conn.getInputStream(); java.io.FileOutputStream out = new java.io.FileOutputStream(apk)) {
+                    byte[] buf = new byte[64 * 1024];
+                    long done = 0;
+                    int lastPct = -1;
+                    int n;
+                    while ((n = in.read(buf)) != -1) {
+                        out.write(buf, 0, n);
+                        done += n;
+                        int pct = total > 0 ? (int) (done * 100 / total) : -1;
+                        if (pct != lastPct) {
+                            lastPct = pct;
+                            JSObject ev = new JSObject();
+                            ev.put("percent", pct);
+                            notifyListeners("updateProgress", ev);
+                        }
+                    }
+                }
+                Uri uri = FileProvider.getUriForFile(ctx, ctx.getPackageName() + ".fileprovider", apk);
+                Intent install = new Intent(Intent.ACTION_VIEW);
+                install.setDataAndType(uri, "application/vnd.android.package-archive");
+                install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+                ctx.startActivity(install);
+                call.resolve();
+            } catch (Exception e) {
+                call.reject(e.getMessage(), e);
+            } finally {
+                if (conn != null) conn.disconnect();
             }
         });
     }

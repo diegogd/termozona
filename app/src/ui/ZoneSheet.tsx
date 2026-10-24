@@ -18,7 +18,8 @@ export function ZoneSheet({ zone, onClose, onEditSchedule }: { zone: number; onC
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(z?.info.name ?? '')
   if (!z) return null
-  const offline = s.link !== 'online'
+  // 'connecting' right after opening the app is not a lost connection.
+  const offline = s.link === 'offline' || s.link === 'reconnecting'
   const st = statusText(z)
   const today = weekday(new Date())
   const todays = zoneTransitions(s.schedule?.events ?? [], zone).filter((t) => t.day === today)

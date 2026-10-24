@@ -669,7 +669,7 @@ export function SchedulePage({ initialZone }: { initialZone?: number }) {
 
       <AwayCard compact />
 
-      {s.link !== 'online' && (
+      {(s.link === 'offline' || s.link === 'reconnecting') && (
         <div className="notice info small" role="status">
           Sin conexión con tu calefacción. Puedes preparar el horario: se guardará en la nube y se aplicará cuando vuelva la conexión.
         </div>

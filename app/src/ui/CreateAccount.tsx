@@ -73,8 +73,10 @@ export function CreateAccount({ onExit, demo }: { onExit: () => void; demo: bool
 
   const ident = deviceIdFromInput(deviceInput)
   const creds: Credentials = { user: user.trim(), password }
-  const userError = touched ? validateUsername(creds.user) : undefined
-  const passError = touched ? validatePassword(password) : undefined
+  // Characters that will never be accepted are flagged as soon as they are typed;
+  // length rules wait until «Crear cuenta», so people are not scolded mid-word.
+  const userError = touched || /[^A-Za-z0-9._-]/.test(creds.user) ? validateUsername(creds.user) : undefined
+  const passError = touched || /[^\x21-\x7e]/.test(password) ? validatePassword(password) : undefined
   const pass2Error = touched && password2 !== password ? 'Las dos contraseñas no coinciden.' : undefined
 
   const go = (s: Step) => {
@@ -339,7 +341,7 @@ export function CreateAccount({ onExit, demo }: { onExit: () => void; demo: bool
                 ? 'Este nombre ya existe. Si es tuyo de un intento anterior, pulsa «Crear cuenta» y te ayudamos a continuar.'
                 : taken === false
                   ? '✓ Nombre disponible'
-                  : 'Por ejemplo: maria.garcia o casa12b'
+                  : 'Letras sin tildes, números, punto, guion o guion bajo. Por ejemplo: maria.garcia'
             }
           />
           <Field label="Contraseña" type="password" value={password} onChange={setPassword} autoComplete="new-password" error={passError} hint="Al menos 6 caracteres, sin espacios ni tildes." />
