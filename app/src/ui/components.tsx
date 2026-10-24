@@ -4,12 +4,11 @@ import { DAY_LABELS, DAY_NAMES } from '../core/schedule'
 import accountCreated from '../assets/illustrations/account-created.svg?raw'
 import connectionError from '../assets/illustrations/connection-error.svg?raw'
 import scheduleEmpty from '../assets/illustrations/schedule-empty.svg?raw'
-import welcome from '../assets/illustrations/welcome.svg?raw'
 import zoneOff from '../assets/illustrations/zone-off.svg?raw'
 import { useAppState, useController } from './app-context'
 import { pushBack } from './back'
 
-const ILLUSTRATIONS = { welcome, scheduleEmpty, connectionError, accountCreated, zoneOff }
+const ILLUSTRATIONS = { scheduleEmpty, connectionError, accountCreated, zoneOff }
 
 export function Illustration({ name }: { name: keyof typeof ILLUSTRATIONS }) {
   // Local, trusted SVG files bundled with the app.

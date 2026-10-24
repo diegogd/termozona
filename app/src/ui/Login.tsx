@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { DEMO_PASSWORD, DEMO_USER } from '../demo/demoBridge'
 import { useAppState, useController } from './app-context'
-import { Field, Illustration } from './components'
+import appIcon from '../assets/brand/app-icon.svg'
+import { Field } from './components'
 import { ForgotPassword } from './CreateAccount'
 
 export function Login({ onCreateAccount, nativeAvailable }: { onCreateAccount: () => void; nativeAvailable: boolean }) {
@@ -20,7 +21,7 @@ export function Login({ onCreateAccount, nativeAvailable }: { onCreateAccount: (
 
   return (
     <main className="page" style={{ paddingBottom: 32 }}>
-      <Illustration name="welcome" />
+      <img className="app-icon" src={appIcon} alt="" width={128} height={128} />
       <div className="stack center">
         <h1 style={{ fontSize: '1.8rem' }}>TermoZona</h1>
         <p className="muted">Controla la calefacción de tu casa, zona a zona.</p>
