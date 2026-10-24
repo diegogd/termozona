@@ -8,6 +8,9 @@ import android.provider.Settings;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
+import android.net.NetworkRequest;
+import android.net.wifi.WifiNetworkSpecifier;
+import android.os.PatternMatcher;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
 import android.os.Build;
@@ -53,6 +56,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.Executors;
 
 import javax.net.ssl.HostnameVerifier;
@@ -255,6 +259,7 @@ public class OrkliNetPlugin extends Plugin {
     protected void handleOnDestroy() {
         for (SocketEntry e : sockets.values()) closeQuietly(e);
         sockets.clear();
+        releaseAp();
         super.handleOnDestroy();
     }
 
@@ -367,6 +372,7 @@ public class OrkliNetPlugin extends Plugin {
                     JSONObject o = new JSONObject();
                     o.put("ssid", ssid);
                     o.put("level", r.level);
+                    o.put("frequency", r.frequency);
                     list.put(o);
                 }
                 JSObject ret = new JSObject();
@@ -411,7 +417,7 @@ public class OrkliNetPlugin extends Plugin {
                 sock.setReuseAddress(true);
                 sock.setSoTimeout(1000);
                 sock.bind(new InetSocketAddress(12000));
-                Network net = wifiNetwork();
+                Network net = apNetwork != null ? apNetwork : wifiNetwork();
                 if (net != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) net.bindSocket(sock);
                 InetAddress ap = InetAddress.getByName("192.168.4.1");
                 DatagramPacket reply = new DatagramPacket(new byte[7], 7);
@@ -443,6 +449,131 @@ public class OrkliNetPlugin extends Plugin {
                 if (sock != null) sock.close();
             }
         });
+    }
+
+    // ---- TermoWifi access point ------------------------------------------------
+
+    /** Every TermoWifi in setup mode broadcasts "Ing_XXXXXX" with this fixed password. */
+    private static final String AP_PASSWORD = "1234567890";
+    private ConnectivityManager.NetworkCallback apCallback;
+    private volatile Network apNetwork;
+
+    private ConnectivityManager connectivity() {
+        return (ConnectivityManager) getContext().getSystemService(Context.CONNECTIVITY_SERVICE);
+    }
+
+    /** The SSID the phone is connected to, or null when Android hides it. */
+    @SuppressWarnings("deprecation")
+    private String connectedSsid() {
+        WifiManager wifi = (WifiManager) getContext().getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+        String ssid = wifi.getConnectionInfo() == null ? null : wifi.getConnectionInfo().getSSID();
+        if (ssid == null || ssid.equals(WifiManager.UNKNOWN_SSID) || ssid.isEmpty()) return null;
+        return ssid.startsWith("\"") && ssid.endsWith("\"") ? ssid.substring(1, ssid.length() - 1) : ssid;
+    }
+
+    @PluginMethod
+    public void currentWifi(PluginCall call) {
+        if (getPermissionState("location") != PermissionState.GRANTED) {
+            requestPermissionForAlias("location", call, "currentWifiAfterPermission");
+            return;
+        }
+        JSObject ret = new JSObject();
+        ret.put("ssid", connectedSsid());
+        call.resolve(ret);
+    }
+
+    @PermissionCallback
+    private void currentWifiAfterPermission(PluginCall call) {
+        JSObject ret = new JSObject();
+        ret.put("ssid", getPermissionState("location") == PermissionState.GRANTED ? connectedSsid() : null);
+        call.resolve(ret);
+    }
+
+    /**
+     * Joins the TermoWifi's own network without leaving the app (Android 10+):
+     * the system asks the user to confirm, and the connection lasts until
+     * leaveDeviceWifi(), when the phone goes back to the home Wi-Fi by itself.
+     * Rejects with UNSUPPORTED on older Android and UNAVAILABLE when the user
+     * cancels or no "Ing_" network shows up in time.
+     */
+    @PluginMethod
+    public void joinDeviceWifi(PluginCall call) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            call.reject("Esta versión de Android no permite conectarse desde la app", "UNSUPPORTED");
+            return;
+        }
+        releaseAp();
+        String ssid = call.getString("ssid");
+        WifiNetworkSpecifier.Builder spec = new WifiNetworkSpecifier.Builder().setWpa2Passphrase(AP_PASSWORD);
+        if (ssid != null && !ssid.isEmpty()) spec.setSsid(ssid);
+        else spec.setSsidPattern(new PatternMatcher("Ing_", PatternMatcher.PATTERN_PREFIX));
+        NetworkRequest request = new NetworkRequest.Builder()
+            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+            .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .setNetworkSpecifier(spec.build())
+            .build();
+        AtomicBoolean answered = new AtomicBoolean(false);
+        ConnectivityManager.NetworkCallback cb = new ConnectivityManager.NetworkCallback() {
+            @Override
+            public void onAvailable(Network network) {
+                apNetwork = network;
+                if (!answered.compareAndSet(false, true)) return;
+                String joined = connectedSsid();
+                JSObject ret = new JSObject();
+                ret.put("ssid", joined != null && joined.startsWith("Ing_") ? joined : ssid);
+                call.resolve(ret);
+            }
+
+            @Override
+            public void onUnavailable() {
+                if (apCallback == this) apCallback = null;
+                if (answered.compareAndSet(false, true)) call.reject("No se ha podido conectar con el TermoWifi", "UNAVAILABLE");
+            }
+
+            @Override
+            public void onLost(Network network) {
+                if (network.equals(apNetwork)) apNetwork = null;
+            }
+        };
+        apCallback = cb;
+        try {
+            connectivity().requestNetwork(request, cb, 120000);
+        } catch (Exception e) {
+            apCallback = null;
+            call.reject(e.getMessage(), "UNAVAILABLE", e);
+        }
+    }
+
+    @PluginMethod
+    public void leaveDeviceWifi(PluginCall call) {
+        releaseAp();
+        call.resolve();
+    }
+
+    private void releaseAp() {
+        ConnectivityManager.NetworkCallback cb = apCallback;
+        apCallback = null;
+        apNetwork = null;
+        if (cb != null) {
+            try {
+                connectivity().unregisterNetworkCallback(cb);
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+    }
+
+    /** Android's Wi-Fi settings: a panel over the app on Android 10+. */
+    @PluginMethod
+    public void openWifiSettings(PluginCall call) {
+        try {
+            String action = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ? Settings.Panel.ACTION_WIFI : Settings.ACTION_WIFI_SETTINGS;
+            Intent intent = new Intent(action);
+            if (getActivity() != null) getActivity().startActivity(intent);
+            else getContext().startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            call.resolve();
+        } catch (Exception e) {
+            call.reject(e.getMessage(), e);
+        }
     }
 
     // ---- updates -----------------------------------------------------------------

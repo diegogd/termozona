@@ -1,13 +1,39 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAppState, useController } from './app-context'
 import { RELEASES_PAGE } from '../core/updates'
+import { pushBack } from './back'
 import { Sheet, relativeTime } from './components'
 import { UpdateBanner, openExternal } from './UpdateBanner'
+import { WifiSetup } from './WifiSetup'
 
 export function Settings() {
   const s = useAppState()
   const c = useController()
   const [confirm, setConfirm] = useState(false)
+  const [wifi, setWifi] = useState(false)
+  const bridge = useMemo(() => c.setupBridge(s.demo), [c, s.demo])
+  useEffect(() => (wifi ? pushBack(() => setWifi(false)) : undefined), [wifi])
+
+  if (wifi) {
+    return (
+      <main className="page" style={{ paddingBottom: 32 }}>
+        <header className="page-header">
+          <button type="button" className="btn-link" onClick={() => setWifi(false)}>
+            ← Ajustes
+          </button>
+        </header>
+        <WifiSetup
+          bridge={bridge}
+          onDone={() => {
+            setWifi(false)
+            c.toast('info', 'En un par de minutos tu calefacción volverá a estar conectada.')
+            setTimeout(() => c.resume(), 90_000)
+          }}
+        />
+      </main>
+    )
+  }
+
   return (
     <main className="page">
       <header className="page-header">
@@ -30,6 +56,14 @@ export function Settings() {
         <button type="button" onClick={() => c.resume()}>
           <span>Actualizar ahora</span>
           <span aria-hidden="true">↻</span>
+        </button>
+        <button type="button" onClick={() => setWifi(true)}>
+          <span>
+            Conectar el TermoWifi a la Wi-Fi
+            <br />
+            <span className="small muted">Si has cambiado de router o de contraseña</span>
+          </span>
+          <span aria-hidden="true">›</span>
         </button>
       </section>
 

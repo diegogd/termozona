@@ -1262,3 +1262,44 @@ p {
   border-radius: 30px;
   box-shadow: 0 10px 30px rgb(31 41 51 / 16%);
 }
+
+/* ---------- Wi-Fi setup ---------- */
+
+.panel-drawing {
+  max-width: 220px;
+}
+
+.panel-drawing .wifi-glow {
+  fill: var(--heat);
+  opacity: 0.25;
+  animation: wifi-blink 1s steps(1, end) infinite;
+}
+
+@keyframes wifi-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-drawing .wifi-glow {
+    animation: none;
+  }
+}
+
+.ap-password {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.ap-password code {
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  user-select: all;
+}

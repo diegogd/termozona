@@ -6,6 +6,7 @@ App **no oficial** para controlar la calefacción por suelo radiante **Orkli Ter
 - Subes o bajas medio grado, enciendes y apagas zonas, y cambias entre calefacción y refrigeración.
 - Programas horarios con un asistente ("me levanto a las…, me acuesto a las…"), copias el horario de una zona a otras y activas el modo "Me voy unos días".
 - El alta de cuenta explica cada error y permite retomar un alta que se quedó a medias.
+- Un asistente conecta el TermoWifi a la Wi-Fi de casa paso a paso (también si cambias de router o de contraseña).
 - Usa la misma cuenta y la misma nube que la app oficial: puedes usar las dos a la vez.
 
 > TermoZona no está hecha ni respaldada por Orkli ni por Ingenium. Úsala bajo tu responsabilidad.

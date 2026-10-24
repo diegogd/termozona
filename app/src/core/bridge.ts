@@ -29,7 +29,12 @@ export interface FtpFile {
 export interface WifiNetwork {
   ssid: string
   level?: number
+  /** MHz; the TermoWifi only works on 2.4 GHz (below 4000). */
+  frequency?: number
 }
+
+/** Why the phone could not join the TermoWifi's own network from the app. */
+export type JoinResult = { ok: true; ssid?: string } | { ok: false; reason: 'unsupported' | 'unavailable' }
 
 export interface Bridge {
   readonly kind: 'native' | 'demo' | 'proxy'
@@ -42,6 +47,14 @@ export interface Bridge {
   scanWifi?(): Promise<WifiNetwork[]>
   /** Optional: send home Wi-Fi credentials to a TermoWifi in access-point mode. */
   provisionWifi?(ssid: string, password: string, onProgress: (pct: number) => void): Promise<void>
+  /** Optional: the Wi-Fi the phone is on right now, if Android tells us. */
+  currentWifi?(): Promise<string | null>
+  /** Optional: connect to a TermoWifi's "Ing_" network (any one if no SSID) without leaving the app. */
+  joinDeviceWifi?(ssid?: string): Promise<JoinResult>
+  /** Optional: drop that connection so the phone goes back to the home Wi-Fi. */
+  leaveDeviceWifi?(): Promise<void>
+  /** Optional: open the system Wi-Fi settings. */
+  openWifiSettings?(): Promise<void>
 }
 
 export class NetworkError extends Error {

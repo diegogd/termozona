@@ -1,7 +1,7 @@
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core'
 import { NetworkError, type Bridge, type SocketHandle, type SocketListener } from '../core/bridge'
 
-// Kotlin side: android/app/src/main/java/es/termozona/app/OrkliNetPlugin.kt
+// Java side: android/app/src/main/java/es/termozona/app/OrkliNetPlugin.java
 interface OrkliNetPlugin {
   httpGet(o: { url: string; headers: Record<string, string> }): Promise<{
     status: number
@@ -13,8 +13,12 @@ interface OrkliNetPlugin {
   socketClose(o: { id: string }): Promise<void>
   ftpStore(o: { host: string; user: string; password: string; files: { name: string; data: string }[] }): Promise<void>
   ftpRetrieve(o: { host: string; user: string; password: string; name: string }): Promise<{ data: string | null }>
-  scanWifi(): Promise<{ networks: { ssid: string; level: number }[] }>
+  scanWifi(): Promise<{ networks: { ssid: string; level: number; frequency: number }[] }>
   provisionWifi(o: { ssid: string; password: string }): Promise<void>
+  currentWifi(): Promise<{ ssid: string | null }>
+  joinDeviceWifi(o: { ssid?: string }): Promise<{ ssid: string | null }>
+  leaveDeviceWifi(): Promise<void>
+  openWifiSettings(): Promise<void>
   addListener(
     event: 'socketData',
     fn: (e: { id: string; data: string }) => void,
@@ -133,6 +137,31 @@ export const capacitorBridge: Bridge = {
     } finally {
       await h.remove()
     }
+  },
+
+  async currentWifi() {
+    try {
+      return (await OrkliNet.currentWifi()).ssid
+    } catch {
+      return null
+    }
+  },
+
+  async joinDeviceWifi(ssid) {
+    try {
+      const r = await OrkliNet.joinDeviceWifi({ ssid })
+      return { ok: true, ssid: r.ssid ?? ssid }
+    } catch (e) {
+      return { ok: false, reason: (e as { code?: string }).code === 'UNSUPPORTED' ? 'unsupported' : 'unavailable' }
+    }
+  },
+
+  async leaveDeviceWifi() {
+    await OrkliNet.leaveDeviceWifi().catch(() => undefined)
+  },
+
+  async openWifiSettings() {
+    await OrkliNet.openWifiSettings()
   },
 }
 

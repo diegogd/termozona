@@ -76,6 +76,8 @@ export function createDemoBridge(opts: DemoOptions = {}): Bridge {
     { state: 3, mode: 2, setpoint: 40, ambient: 19.5, humidity: 125 },
   ]
   const wait = (ms = latency) => new Promise((r) => setTimeout(r, ms))
+  /** Device network the simulated phone joined during Wi-Fi setup. */
+  let joined: string | null = null
 
   const zip = () => {
     const entries: Record<string, Uint8Array> = {}
@@ -249,9 +251,10 @@ export function createDemoBridge(opts: DemoOptions = {}): Bridge {
     async scanWifi() {
       await wait(800)
       return [
-        { ssid: 'Ing_A1B2C3', level: -48 },
-        { ssid: 'MiFibra-7F2A', level: -60 },
-        { ssid: 'Vecino_5G', level: -82 },
+        { ssid: 'Ing_A1B2C3', level: -48, frequency: 2437 },
+        { ssid: 'MiFibra-7F2A', level: -60, frequency: 2412 },
+        { ssid: 'MiFibra-7F2A_5G', level: -63, frequency: 5180 },
+        { ssid: 'Vecino_5G', level: -82, frequency: 5500 },
       ]
     },
 
@@ -260,6 +263,21 @@ export function createDemoBridge(opts: DemoOptions = {}): Bridge {
         onProgress(p)
         await wait(120)
       }
+      joined = null
+    },
+
+    async currentWifi() {
+      return joined ?? 'MiFibra-7F2A'
+    },
+
+    async joinDeviceWifi(ssid) {
+      await wait(1200)
+      joined = ssid ?? 'Ing_A1B2C3'
+      return { ok: true, ssid: joined }
+    },
+
+    async leaveDeviceWifi() {
+      joined = null
     },
   }
 }

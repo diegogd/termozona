@@ -16,6 +16,7 @@ import { deviceIdFromInput, type ZoneInfo } from '../core/installation'
 import { ROOM_SUGGESTIONS, discoverZones, uploadSetup } from '../core/setup'
 import { useController } from './app-context'
 import { Field, Illustration } from './components'
+import { WifiSetup } from './WifiSetup'
 
 type Step = 'intro' | 'wifi' | 'device' | 'account' | 'creating' | 'exists' | 'zones' | 'upload' | 'done'
 
@@ -38,10 +39,6 @@ export function CreateAccount({ onExit, demo }: { onExit: () => void; demo: bool
   const [deviceInput, setDeviceInput] = useState('')
   const [networks, setNetworks] = useState<WifiNetwork[] | null>(null)
   const [scanning, setScanning] = useState(false)
-  // wifi provisioning
-  const [ssid, setSsid] = useState('')
-  const [wifiPass, setWifiPass] = useState('')
-  const [wifiProgress, setWifiProgress] = useState<number | null>(null)
   // account
   const [user, setUser] = useState('')
   const [password, setPassword] = useState('')
@@ -94,21 +91,6 @@ export function CreateAccount({ onExit, demo }: { onExit: () => void; demo: bool
       setError('No se ha podido buscar redes. Escribe el nombre a mano.')
     } finally {
       setScanning(false)
-    }
-  }
-
-  const provision = async () => {
-    if (!bridge.provisionWifi) return
-    setError(undefined)
-    setWifiProgress(0)
-    try {
-      await bridge.provisionWifi(ssid, wifiPass, setWifiProgress)
-      setWifiProgress(100)
-    } catch {
-      setWifiProgress(null)
-      setError(
-        'No se han podido enviar los datos. Comprueba que el móvil está conectado a la red Wi-Fi del TermoWifi (Ing_…) y vuelve a intentarlo.',
-      )
     }
   }
 
@@ -242,49 +224,23 @@ export function CreateAccount({ onExit, demo }: { onExit: () => void; demo: bool
           <button type="button" className="btn btn-block" onClick={() => go('wifi')}>
             No, o no lo sé
           </button>
+          <p className="small muted">
+            Si es nuevo, lo has desenchufado del router o has cambiado de router o de contraseña de la Wi-Fi, elige «No, o no lo sé»: te guiamos
+            paso a paso.
+          </p>
         </section>
       )}
 
       {step === 'wifi' && (
-        <section className="stack">
-          <h1>Conecta el TermoWifi a tu Wi-Fi</h1>
-          <ol style={{ margin: 0, paddingLeft: 22 }} className="stack">
-            <li>Pon el TermoWifi en modo configuración (consulta su manual: normalmente se mantiene pulsado su botón hasta que parpadea).</li>
-            <li>
-              En los ajustes de Wi-Fi del móvil, conéctate a la red que empieza por <b>Ing_</b>. Apunta ese nombre: lo necesitarás después.
-            </li>
-            <li>Vuelve aquí y escribe los datos de la Wi-Fi de tu casa.</li>
-          </ol>
-          <Field label="Nombre de tu Wi-Fi" value={ssid} onChange={setSsid} hint="Tal cual aparece en el móvil, con mayúsculas." />
-          <Field label="Contraseña de tu Wi-Fi" type="password" value={wifiPass} onChange={setWifiPass} />
-          {wifiProgress !== null && wifiProgress < 100 && (
-            <div className="progress" role="progressbar" aria-valuenow={wifiProgress} aria-valuemin={0} aria-valuemax={100}>
-              <span style={{ width: `${wifiProgress}%` }} />
-            </div>
-          )}
-          {wifiProgress === 100 ? (
-            <>
-              <div className="notice ok">TermoWifi configurado. Vuelve a conectar el móvil a la Wi-Fi de tu casa y continúa.</div>
-              <button type="button" className="btn btn-primary btn-block" onClick={() => go('device')}>
-                Continuar
-              </button>
-            </>
-          ) : bridge.provisionWifi ? (
-            <button
-              type="button"
-              className="btn btn-primary btn-block"
-              disabled={!ssid.trim() || wifiProgress !== null}
-              onClick={() => void provision()}
-            >
-              {wifiProgress !== null ? `Enviando… ${wifiProgress} %` : 'Enviar al TermoWifi'}
-            </button>
-          ) : (
-            <div className="notice warn">Este paso solo se puede hacer desde la app de Android.</div>
-          )}
-          <button type="button" className="btn-link" onClick={() => go('device')}>
-            Ya está conectado, saltar este paso
-          </button>
-        </section>
+        <WifiSetup
+          bridge={bridge}
+          skipLabel="Ya está conectado, saltar este paso"
+          onSkip={() => go('device')}
+          onDone={(ap) => {
+            if (ap && deviceIdFromInput(ap)) setDeviceInput(ap)
+            go('device')
+          }}
+        />
       )}
 
       {step === 'device' && (
