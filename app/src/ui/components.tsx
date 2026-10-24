@@ -215,10 +215,24 @@ export function Toasts() {
   return (
     <div className="toasts" role="status" aria-live="polite">
       {toasts.map((t) => (
-        <button key={t.id} type="button" className={`toast ${t.kind}`} onClick={() => c.dismissToast(t.id)}>
-          <span>{t.text}</span>
-          <span aria-hidden="true">×</span>
-        </button>
+        <div key={t.id} className={`toast ${t.kind}`}>
+          <span style={{ flex: 1 }}>{t.text}</span>
+          {t.action && (
+            <button
+              type="button"
+              className="toast-action"
+              onClick={() => {
+                c.dismissToast(t.id)
+                t.action?.run()
+              }}
+            >
+              {t.action.label}
+            </button>
+          )}
+          <button type="button" className="toast-close" aria-label="Cerrar aviso" onClick={() => c.dismissToast(t.id)}>
+            ×
+          </button>
+        </div>
       ))}
     </div>
   )

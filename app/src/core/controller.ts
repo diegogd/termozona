@@ -43,10 +43,16 @@ import { checkForUpdate, isNewer, type UpdateInfo } from './updates'
 export type Phase = 'boot' | 'signedOut' | 'signingIn' | 'ready'
 export type Link = 'connecting' | 'online' | 'reconnecting' | 'offline'
 
+export interface ToastAction {
+  label: string
+  run: () => void
+}
+
 export interface Toast {
   id: number
   kind: 'info' | 'success' | 'error'
   text: string
+  action?: ToastAction
 }
 
 export interface PendingWrite {
@@ -179,9 +185,9 @@ export class Controller {
     this.listeners.forEach((fn) => fn())
   }
 
-  toast(kind: Toast['kind'], text: string, ms = kind === 'error' ? 10_000 : 6000): void {
+  toast(kind: Toast['kind'], text: string, ms = kind === 'error' ? 10_000 : 6000, action?: ToastAction): void {
     if (this.state.toasts.some((t) => t.text === text)) return
-    const t = { id: ++this.toastId, kind, text }
+    const t = { id: ++this.toastId, kind, text, action }
     this.set({ toasts: [...this.state.toasts, t] })
     setTimeout(() => this.dismissToast(t.id), ms)
   }
@@ -562,7 +568,7 @@ export class Controller {
 
   // ---- schedule ------------------------------------------------------------------
 
-  async saveSchedule(events: ScheduleEvent[]): Promise<boolean> {
+  async saveSchedule(events: ScheduleEvent[], done?: { text: string; action?: ToastAction }): Promise<boolean> {
     if (!this.session || !this.creds) return false
     const schedule: Schedule = { timeZone: this.state.schedule?.timeZone || '', events }
     let chronos: string
@@ -583,7 +589,7 @@ export class Controller {
     // Keep the edited events (and their ids) so open screens stay consistent.
     this.set({ schedule: { ...schedule, timeZone: parseSchedule(chronos).timeZone }, scheduleSaving: false, scheduleSyncPending: true })
     await this.persist()
-    if (await this.syncSchedule()) this.toast('success', 'Horario guardado en la nube.')
+    if (await this.syncSchedule()) this.toast('success', done?.text ?? 'Horario guardado en la nube.', done?.action ? 8000 : undefined, done?.action)
     else this.toast('info', 'Horario guardado. Se aplicará en cuanto vuelva la conexión con tu calefacción.')
     return true
   }

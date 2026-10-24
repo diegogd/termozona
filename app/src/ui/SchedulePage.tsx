@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { ZoneInfo } from '../core/installation'
 import {
   DAY_LABELS,
@@ -484,6 +484,97 @@ function ConflictNotice(props: { group: ConflictGroup; onKeep: (setpoint: number
   )
 }
 
+// ---- swipe to delete ---------------------------------------------------------------
+
+const SWIPE_WIDTH = 104
+
+/**
+ * A row that slides left to reveal a delete button. Vertical scrolling keeps
+ * working (touch-action: pan-y) and a tap on an open row closes it instead of
+ * opening the editor.
+ */
+function SwipeRow(props: {
+  open: boolean
+  onOpen: () => void
+  onClose: () => void
+  onDelete: () => void
+  deleteLabel: string
+  className: string
+  children: ReactNode
+}) {
+  const drag = useRef<{ x: number; y: number; from: number; active: boolean; moved: boolean } | null>(null)
+  // The browser fires a click right after a drag ends; that click is part of the swipe.
+  const swallowClick = useRef(false)
+  const [dx, setDx] = useState<number | null>(null)
+  const offset = dx ?? (props.open ? -SWIPE_WIDTH : 0)
+
+  const end = () => {
+    const d = drag.current
+    drag.current = null
+    if (!d?.active) return
+    swallowClick.current = true
+    setTimeout(() => (swallowClick.current = false), 400)
+    if ((dx ?? 0) < -SWIPE_WIDTH / 2) props.onOpen()
+    else props.onClose()
+    setDx(null)
+  }
+
+  return (
+    <div className="swipe">
+      <button
+        type="button"
+        className="swipe-delete"
+        tabIndex={props.open ? 0 : -1}
+        aria-hidden={!props.open}
+        aria-label={props.deleteLabel}
+        onClick={props.onDelete}
+      >
+        Borrar
+      </button>
+      <div
+        className={props.className}
+        style={{ transform: `translateX(${offset}px)`, transition: dx === null ? 'transform 0.2s ease' : 'none', touchAction: 'pan-y' }}
+        onPointerDown={(e) => {
+          if (e.pointerType === 'mouse' && e.button !== 0) return
+          drag.current = { x: e.clientX, y: e.clientY, from: props.open ? -SWIPE_WIDTH : 0, active: false, moved: false }
+        }}
+        onPointerMove={(e) => {
+          const d = drag.current
+          if (!d) return
+          const mx = e.clientX - d.x
+          const my = e.clientY - d.y
+          if (!d.active) {
+            if (Math.abs(mx) > 10 && Math.abs(mx) > Math.abs(my) * 1.5) {
+              d.active = d.moved = true
+              e.currentTarget.setPointerCapture(e.pointerId)
+            } else if (Math.abs(my) > 10) {
+              drag.current = null
+              return
+            } else return
+          }
+          setDx(Math.max(-SWIPE_WIDTH * 1.3, Math.min(0, d.from + mx)))
+        }}
+        onPointerUp={end}
+        onPointerCancel={end}
+        onClickCapture={(e) => {
+          // A swipe, or a tap on an open row, must not open the editor or flip the switch.
+          if (swallowClick.current) {
+            swallowClick.current = false
+            e.stopPropagation()
+            e.preventDefault()
+          } else if (props.open) {
+            e.stopPropagation()
+            e.preventDefault()
+            props.onClose()
+          }
+        }}
+      >
+        {props.children}
+      </div>
+    </div>
+  )
+}
+
 // ---- page ---------------------------------------------------------------------------
 
 type Editing =
@@ -491,6 +582,7 @@ type Editing =
   | { kind: 'routine' }
   | { kind: 'copy' }
   | { kind: 'full' }
+  | { kind: 'clear' }
   | null
 
 /** First o'clock hour from 07:00 that this zone does not use yet. */
@@ -506,6 +598,7 @@ export function SchedulePage({ initialZone }: { initialZone?: number }) {
   const zones = useMemo(() => zoneViews(s).map((v) => v.info), [s])
   const [zone, setZone] = useState<number>(initialZone ?? zones[0]?.index ?? 0)
   const [editing, setEditing] = useState<Editing>(null)
+  const [openRow, setOpenRow] = useState<string | null>(null)
   useEffect(() => {
     if (initialZone !== undefined) setZone(initialZone)
   }, [initialZone])
@@ -539,6 +632,29 @@ export function SchedulePage({ initialZone }: { initialZone?: number }) {
     const losers = new Set(g.events.filter((e) => e !== winner).map((e) => e.id))
     void save(events.flatMap((e) => (losers.has(e.id) ? removeCoverage([e], [g.zone], g.days) : [e])))
   }
+
+  /** Saves a deletion and offers to undo it from the toast. */
+  const removeWithUndo = (next: ScheduleEvent[], text: string) => {
+    const previous = events
+    setOpenRow(null)
+    void c
+      .saveSchedule(compact(next), { text, action: { label: 'Deshacer', run: () => void c.saveSchedule(previous, { text: 'Recuperado.' }) } })
+      .then((ok) => ok && setEditing(null))
+  }
+
+  const swipeDelete = (ev: ScheduleEvent) => {
+    const shared = ev.zones.length > 1
+    removeWithUndo(
+      applyDelete(events, ev, zone, 'zone'),
+      shared ? `Cambio de las ${formatMinute(ev.minute)} quitado de ${zoneName(zone)}.` : `Cambio de las ${formatMinute(ev.minute)} borrado.`,
+    )
+  }
+
+  const clearZone = () =>
+    removeWithUndo(
+      events.reduce((acc, ev) => (ev.zones.includes(zone) ? applyDelete(acc, ev, zone, 'zone') : acc), events),
+      `Horario de ${zoneName(zone)} borrado.`,
+    )
 
   const newEvent = (): ScheduleEvent => ({ id: newEventId(), enabled: true, days: ALL_DAYS(), minute: freeMinute(events, zone), zones: [zone], setpoint: 21 })
 
@@ -607,7 +723,15 @@ export function SchedulePage({ initialZone }: { initialZone?: number }) {
             {zoneEvents.map((ev) => {
               const others = ev.zones.filter((z) => z !== zone)
               return (
-                <div key={ev.id} className={`event ${ev.enabled ? '' : 'disabled'} ${conflictIds.has(ev.id) ? 'conflict' : ''}`}>
+                <SwipeRow
+                  key={ev.id}
+                  open={openRow === ev.id}
+                  onOpen={() => setOpenRow(ev.id)}
+                  onClose={() => setOpenRow(null)}
+                  onDelete={() => swipeDelete(ev)}
+                  deleteLabel={`Borrar el cambio de las ${formatMinute(ev.minute)}`}
+                  className={`event ${ev.enabled ? '' : 'disabled'} ${conflictIds.has(ev.id) ? 'conflict' : ''}`}
+                >
                   <button type="button" className="event-main" onClick={() => setEditing({ kind: 'event', ev, isNew: false })}>
                     <span className="time">{formatMinute(ev.minute)}</span>
                     <span className="what">
@@ -633,10 +757,11 @@ export function SchedulePage({ initialZone }: { initialZone?: number }) {
                       void save(next)
                     }}
                   />
-                </div>
+                </SwipeRow>
               )
             })}
           </section>
+          <p className="small muted">Desliza un cambio hacia la izquierda para borrarlo.</p>
           <div className="row wrap">
             <button type="button" className="btn" onClick={() => setEditing({ kind: 'routine' })}>
               Horario rápido (añadir o cambiar días)
@@ -647,6 +772,9 @@ export function SchedulePage({ initialZone }: { initialZone?: number }) {
               </button>
             )}
           </div>
+          <button type="button" className="btn btn-danger" onClick={() => setEditing({ kind: 'clear' })}>
+            Borrar todo el horario…
+          </button>
         </>
       )}
 
@@ -663,6 +791,36 @@ export function SchedulePage({ initialZone }: { initialZone?: number }) {
         </button>
       )}
 
+      {editing?.kind === 'clear' && (
+        <Sheet
+          title="Borrar el horario"
+          onClose={() => setEditing(null)}
+          actions={
+            <div className="stack">
+              <button type="button" className="btn btn-danger btn-block" disabled={s.scheduleSaving} onClick={clearZone}>
+                Borrar el horario de {zoneName(zone)}
+              </button>
+              {events.some((e) => e.zones.some((z) => z !== zone)) && (
+                <button
+                  type="button"
+                  className="btn btn-danger btn-block"
+                  disabled={s.scheduleSaving}
+                  onClick={() => removeWithUndo([], 'Horario de toda la casa borrado.')}
+                >
+                  Borrar el horario de toda la casa
+                </button>
+              )}
+              <button type="button" className="btn btn-block" onClick={() => setEditing(null)}>
+                Cancelar
+              </button>
+            </div>
+          }
+        >
+          <p>
+            Las zonas se quedarán con la temperatura que tengan ahora y dejará de cambiar sola. Tendrás unos segundos para deshacerlo.
+          </p>
+        </Sheet>
+      )}
       {editing?.kind === 'full' && (
         <Sheet title="Has llegado al máximo" onClose={() => setEditing(null)}>
           <p>
