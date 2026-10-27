@@ -225,8 +225,8 @@ export function CreateAccount({ onExit, demo }: { onExit: () => void; demo: bool
             No, o no lo sé
           </button>
           <p className="small muted">
-            Si es nuevo, lo has desenchufado del router o has cambiado de router o de contraseña de la Wi-Fi, elige «No, o no lo sé»: te guiamos
-            paso a paso.
+            Lo sabrás por la luz azul del botón Wi-Fi del termostato de pared: <b>fija</b> es que está conectado; <b>parpadeando o apagada</b>, que
+            no. Si has cambiado de router o de contraseña de la Wi-Fi, elige «No, o no lo sé»: te guiamos paso a paso.
           </p>
         </section>
       )}
@@ -247,8 +247,9 @@ export function CreateAccount({ onExit, demo }: { onExit: () => void; demo: bool
         <section className="stack">
           <h1>¿Cuál es tu TermoWifi?</h1>
           <p className="muted">
-            Cada TermoWifi tiene un nombre que empieza por <b>Ing_</b> seguido de 6 letras o números. Aparece en la lista de redes Wi-Fi del móvil
-            cuando estás cerca de él.
+            Cada TermoWifi tiene un nombre que empieza por <b>Ing_</b> seguido de 6 letras o números. Lo encontrarás en la{' '}
+            <b>etiqueta de la parte trasera</b> del termostato, y también en la lista de redes Wi-Fi del móvil mientras la luz del botón Wi-Fi está
+            apagada.
           </p>
           {bridge.scanWifi && (
             <button type="button" className="btn btn-block" disabled={scanning} onClick={() => void scan()}>

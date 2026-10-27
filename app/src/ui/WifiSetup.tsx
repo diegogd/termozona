@@ -5,24 +5,33 @@ import { Field } from './components'
 /** Fixed password of the "Ing_XXXXXX" network a TermoWifi opens in setup mode. */
 export const DEVICE_AP_PASSWORD = '1234567890'
 
-type Phase = 'blink' | 'join' | 'home' | 'sending' | 'done'
-const PHASES: Phase[] = ['blink', 'join', 'home', 'done']
+/** Seconds the Wi-Fi key must be held to forget the saved network (Orkli manual and field tests). */
+const RESET_SECONDS = 15
+
+type Phase = 'light' | 'connected' | 'reset' | 'join' | 'home' | 'sending' | 'done'
+const PHASES: Phase[] = ['light', 'join', 'home', 'done']
+type Led = 'off' | 'blink' | 'on'
 
 const is5GHz = (n: WifiNetwork) => (n.frequency ?? 0) > 4000
 const byteLength = (s: string) => new TextEncoder().encode(s).length
 
 /**
- * Connects a TermoWifi to the home Wi-Fi: setup mode on the main panel, the
- * phone joins its "Ing_" network, and the app sends the home SSID and password.
- * Used when signing up and from Ajustes (new router or new Wi-Fi password).
+ * Connects a TermoWifi to the home Wi-Fi, following the Orkli manual: the blue
+ * light of the Wi-Fi key is solid when connected, blinks when it has a network
+ * saved but cannot reach it, and is off when it has none. Only with the light
+ * off does it open its own "Ing_XXXXXX" network; holding the key ~15 s forgets
+ * the saved network. The phone joins that network and the app sends the home
+ * SSID and password. Used when signing up and from Ajustes.
  */
 export function WifiSetup(props: { bridge: Bridge; onDone: (deviceSsid?: string) => void; onSkip?: () => void; skipLabel?: string }) {
   const { bridge } = props
-  const [phase, setPhase] = useState<Phase>('blink')
+  const [phase, setPhase] = useState<Phase>('light')
   const [error, setError] = useState<string>()
   const [tips, setTips] = useState(false)
+  const [countdown, setCountdown] = useState<number | null>(null)
   // joining the device network
   const [joining, setJoining] = useState(false)
+  const [devices, setDevices] = useState<string[] | null>(null)
   const [manual, setManual] = useState(!bridge.joinDeviceWifi)
   const [deviceSsid, setDeviceSsid] = useState<string>()
   const joined = useRef(false)
@@ -41,8 +50,16 @@ export function WifiSetup(props: { bridge: Bridge; onDone: (deviceSsid?: string)
     [bridge],
   )
 
+  useEffect(() => {
+    if (countdown === null || countdown <= 0) return
+    const t = setTimeout(() => setCountdown(countdown - 1), 1000)
+    return () => clearTimeout(t)
+  }, [countdown])
+
   const go = (p: Phase) => {
     setError(undefined)
+    setTips(false)
+    setCountdown(null)
     setPhase(p)
   }
 
@@ -52,11 +69,12 @@ export function WifiSetup(props: { bridge: Bridge; onDone: (deviceSsid?: string)
     if (now && !now.startsWith('Ing_')) setSsid((s) => s || now)
   }
 
-  const join = async () => {
+  const join = async (target?: string) => {
     if (!bridge.joinDeviceWifi) return setManual(true)
+    setDevices(null)
     setJoining(true)
     setError(undefined)
-    const r = await bridge.joinDeviceWifi()
+    const r = await bridge.joinDeviceWifi(target)
     setJoining(false)
     if (r.ok) {
       joined.current = true
@@ -67,14 +85,26 @@ export function WifiSetup(props: { bridge: Bridge; onDone: (deviceSsid?: string)
     setError(
       r.reason === 'unsupported'
         ? undefined
-        : 'No hemos podido conectar con el TermoWifi. Comprueba que su luz sigue parpadeando, o conéctate a mano como se explica abajo.',
+        : 'No hemos podido conectar con el TermoWifi. Comprueba que la luz del botón Wi-Fi sigue apagada, o conéctate a mano como se explica abajo.',
     )
   }
 
+  /** With several TermoWifi around (neighbours), the right one is on the back label. */
   const startJoin = async () => {
     go('join')
     await rememberHome()
-    if (!manual) await join()
+    if (manual) return
+    let nearby: string[] = []
+    if (bridge.scanWifi) {
+      setJoining(true)
+      nearby = await bridge
+        .scanWifi()
+        .then((list) => [...new Set(list.map((n) => n.ssid).filter((n) => /^Ing_[0-9A-Za-z]{6}$/.test(n)))].sort())
+        .catch(() => [])
+      setJoining(false)
+    }
+    if (nearby.length > 1) setDevices(nearby)
+    else await join(nearby[0])
   }
 
   const checkManual = async () => {
@@ -132,12 +162,12 @@ export function WifiSetup(props: { bridge: Bridge; onDone: (deviceSsid?: string)
     } catch {
       setPhase('home')
       setError(
-        'El TermoWifi no responde. Comprueba que su luz sigue parpadeando y que el móvil sigue conectado a su red (Ing_…). Si ha dejado de parpadear, vuelve a mantener pulsada la tecla Wi-Fi y reintenta.',
+        'El TermoWifi no responde. Comprueba que el móvil sigue conectado a su red (Ing_…) y que la luz del botón Wi-Fi sigue apagada. Si se ha encendido, vuelve a mantener el dedo 15 segundos y reintenta.',
       )
     }
   }
 
-  const index = PHASES.indexOf(phase === 'sending' ? 'home' : phase)
+  const index = PHASES.indexOf(phase === 'sending' ? 'home' : phase === 'reset' || phase === 'connected' ? 'light' : phase)
 
   return (
     <section className="stack">
@@ -145,53 +175,144 @@ export function WifiSetup(props: { bridge: Bridge; onDone: (deviceSsid?: string)
         Conectar a la Wi-Fi · {index + 1} de {PHASES.length}
       </p>
 
-      {phase === 'blink' && (
+      {phase === 'light' && (
         <>
-          <h1>Pon el TermoWifi en modo configuración</h1>
-          <PanelDrawing />
+          <h1>¿Cómo está la luz del botón Wi-Fi?</h1>
+          <PanelDrawing led="on" />
+          <p>
+            Mira el <b>termostato de pared con pantalla</b> (el TermoWifi). Abajo a la derecha tiene el botón Wi-Fi con una <b>luz azul</b>.
+          </p>
+          <div className="list" role="list">
+            <button type="button" role="listitem" onClick={() => void startJoin()}>
+              <span className="led-option">
+                <i className="led led-off" aria-hidden="true" />
+                <span>
+                  <b>Apagada</b>
+                  <br />
+                  <span className="small muted">No tiene ninguna Wi-Fi guardada</span>
+                </span>
+              </span>
+              <span aria-hidden="true">›</span>
+            </button>
+            <button type="button" role="listitem" onClick={() => go('reset')}>
+              <span className="led-option">
+                <i className="led led-blink" aria-hidden="true" />
+                <span>
+                  <b>Parpadea</b>
+                  <br />
+                  <span className="small muted">Tiene una Wi-Fi guardada pero no consigue conectarse</span>
+                </span>
+              </span>
+              <span aria-hidden="true">›</span>
+            </button>
+            <button type="button" role="listitem" onClick={() => go('connected')}>
+              <span className="led-option">
+                <i className="led led-on" aria-hidden="true" />
+                <span>
+                  <b>Azul fija</b>
+                  <br />
+                  <span className="small muted">Ya está conectado a una Wi-Fi</span>
+                </span>
+              </span>
+              <span aria-hidden="true">›</span>
+            </button>
+          </div>
+        </>
+      )}
+
+      {phase === 'connected' && (
+        <>
+          <h1>Tu TermoWifi ya está conectado</h1>
+          <p>
+            La luz azul fija indica que está conectado a una Wi-Fi. {props.onSkip ? 'Puedes seguir sin tocar nada.' : 'No hace falta cambiar nada.'}
+          </p>
+          {props.onSkip ? (
+            <button type="button" className="btn btn-primary btn-block" onClick={props.onSkip}>
+              {props.skipLabel ?? 'Continuar'}
+            </button>
+          ) : (
+            <button type="button" className="btn btn-primary btn-block" onClick={() => props.onDone()}>
+              Volver
+            </button>
+          )}
+          <p className="muted small">¿Quieres conectarlo a otra Wi-Fi (por ejemplo, un router nuevo)? Primero hay que borrar la que tiene guardada.</p>
+          <button type="button" className="btn btn-block" onClick={() => go('reset')}>
+            Conectarlo a otra Wi-Fi
+          </button>
+        </>
+      )}
+
+      {phase === 'reset' && (
+        <>
+          <h1>Borra la Wi-Fi que tiene guardada</h1>
+          <PanelDrawing led="blink" finger />
           <ol className="stack" style={{ margin: 0, paddingLeft: 22 }}>
             <li>
-              Ve al <b>panel principal</b> del TermoWifi, el de la casa (no los termostatos de cada habitación).
+              Pon el dedo sobre el <b>botón Wi-Fi</b> y <b>mantenlo unos {RESET_SECONDS} segundos</b>, sin levantarlo.
             </li>
             <li>
-              <b>Mantén pulsada la tecla Wi-Fi</b> unos segundos, hasta que su luz <b>empiece a parpadear</b>. Entonces suéltala.
+              La luz hará un <b>parpadeo rápido</b> y se <b>apagará</b>. Entonces ya puedes soltar.
             </li>
           </ol>
-          <p className="muted small">
-            Mientras parpadea, el TermoWifi abre su propia red Wi-Fi, con un nombre que empieza por <b>Ing_</b>, para que el móvil le pase los
-            datos de tu casa.
-          </p>
+          {countdown === null ? (
+            <button type="button" className="btn btn-block" onClick={() => setCountdown(RESET_SECONDS)}>
+              Cuéntame los {RESET_SECONDS} segundos
+            </button>
+          ) : (
+            <p className="countdown center" role="timer" aria-live="polite">
+              {countdown > 0 ? `${countdown} s` : 'Ya puedes soltar'}
+            </p>
+          )}
           <button type="button" className="btn btn-primary btn-block" onClick={() => void startJoin()}>
-            Ya parpadea
+            La luz ya está apagada
           </button>
           <button type="button" className="btn-link" aria-expanded={tips} onClick={() => setTips(!tips)}>
-            No consigo que parpadee
+            Sigue encendida o parpadeando
           </button>
           {tips && (
             <div className="notice info">
               <ul style={{ margin: 0, paddingLeft: 20 }}>
-                <li>Mantén la tecla pulsada más tiempo, hasta 10 segundos, sin soltarla.</li>
-                <li>Comprueba que el panel tiene corriente (alguna luz encendida).</li>
-                <li>Si acabas de enchufarlo, espera un minuto y vuelve a probar.</li>
-                <li>Si aun así no parpadea, consulta a tu instalador.</li>
+                <li>Vuelve a probar contando {RESET_SECONDS} segundos enteros sin levantar el dedo: con solo unos segundos no se borra.</li>
+                <li>Pulsa justo encima del dibujo de la Wi-Fi; es un botón táctil, no hace falta apretar fuerte.</li>
+                <li>Comprueba que la pantalla del termostato está encendida.</li>
+                <li>Si aun así no se apaga, consulta a tu instalador.</li>
               </ul>
             </div>
           )}
-          {props.onSkip && (
-            <button type="button" className="btn-link" onClick={props.onSkip}>
-              {props.skipLabel ?? 'Saltar este paso'}
-            </button>
-          )}
+          <button type="button" className="btn-link" onClick={() => go('light')}>
+            ← Volver
+          </button>
         </>
       )}
 
       {phase === 'join' && (
         <>
           <h1>Conecta el móvil al TermoWifi</h1>
-          {!manual ? (
+          {!manual && devices ? (
             <>
               <p>
-                Android te preguntará si quieres conectarte a una red que empieza por <b>Ing_</b>. Elígela y pulsa <b>«Conectar»</b>.
+                Hay varios TermoWifi cerca (seguramente de tus vecinos). Elige el tuyo: su código está en la <b>etiqueta de la parte trasera</b> del
+                termostato.
+              </p>
+              <div className="list" role="list">
+                {devices.map((d) => (
+                  <button key={d} type="button" role="listitem" onClick={() => void join(d)}>
+                    <b>{d}</b>
+                    <span className="muted small">Elegir</span>
+                  </button>
+                ))}
+              </div>
+              <button type="button" className="btn-link" onClick={() => void join()}>
+                El mío no está en la lista
+              </button>
+            </>
+          ) : !manual ? (
+            <>
+              <p>
+                Android te preguntará si quieres conectarte a una red que empieza por <b>Ing_</b>. Elige la tuya y pulsa <b>«Conectar»</b>.
+              </p>
+              <p className="muted small">
+                Si aparecen varias, la tuya es la que coincide con el código de la etiqueta de la parte trasera del termostato.
               </p>
               <p className="muted small">Es solo un momento: al terminar, el móvil volverá solo a tu Wi-Fi.</p>
               {joining ? (
@@ -199,7 +320,7 @@ export function WifiSetup(props: { bridge: Bridge; onDone: (deviceSsid?: string)
                   Buscando el TermoWifi…
                 </p>
               ) : (
-                <button type="button" className="btn btn-primary btn-block" onClick={() => void join()}>
+                <button type="button" className="btn btn-primary btn-block" onClick={() => void startJoin()}>
                   Conectar con el TermoWifi
                 </button>
               )}
@@ -209,7 +330,8 @@ export function WifiSetup(props: { bridge: Bridge; onDone: (deviceSsid?: string)
               {error && <div className="notice warn">{error}</div>}
               <ol className="stack" style={{ margin: 0, paddingLeft: 22 }}>
                 <li>
-                  Abre los ajustes de Wi-Fi del móvil y elige la red que empieza por <b>Ing_</b>.
+                  Abre los ajustes de Wi-Fi del móvil y elige la red que empieza por <b>Ing_</b>. Si hay varias, la tuya coincide con el código de
+                  la etiqueta de la parte trasera del termostato.
                 </li>
                 <li>
                   Pon esta contraseña:
@@ -234,13 +356,13 @@ export function WifiSetup(props: { bridge: Bridge; onDone: (deviceSsid?: string)
                 Ya estoy conectado
               </button>
               {bridge.joinDeviceWifi && (
-                <button type="button" className="btn-link" onClick={() => (setManual(false), void join())}>
+                <button type="button" className="btn-link" onClick={() => (setManual(false), void startJoin())}>
                   Probar otra vez la conexión automática
                 </button>
               )}
             </>
           )}
-          <button type="button" className="btn-link" onClick={() => go('blink')}>
+          <button type="button" className="btn-link" onClick={() => go('light')}>
             ← Volver
           </button>
         </>
@@ -320,17 +442,18 @@ export function WifiSetup(props: { bridge: Bridge; onDone: (deviceSsid?: string)
         <>
           <h1>Datos enviados</h1>
           <div className="notice ok">
-            El TermoWifi se está conectando a <b>«{ssid.trim()}»</b>. Cuando lo consiga, su luz Wi-Fi <b>dejará de parpadear</b>; suele tardar uno o
-            dos minutos.
+            El TermoWifi se está conectando a <b>«{ssid.trim()}»</b>. Cuando lo consiga, la luz del botón Wi-Fi se quedará <b>azul fija</b>; suele
+            tardar uno o dos minutos.
           </div>
           <p className="muted small">
-            El móvil ha vuelto a tu Wi-Fi. Si no es así, conéctalo tú desde los ajustes. Si pasados unos minutos la luz sigue parpadeando, puede que la
-            contraseña no fuera correcta: repite estos pasos.
+            Si la luz <b>parpadea</b>, no ha podido conectarse: casi siempre es la contraseña o una red de 5 GHz. Mantén el dedo {RESET_SECONDS}{' '}
+            segundos en el botón Wi-Fi para borrarla y repite estos pasos.
           </p>
+          <p className="muted small">El móvil ha vuelto a tu Wi-Fi. Si no es así, conéctalo tú desde los ajustes.</p>
           <button type="button" className="btn btn-primary btn-block" onClick={() => props.onDone(deviceSsid)}>
             Continuar
           </button>
-          <button type="button" className="btn-link" onClick={() => go('blink')}>
+          <button type="button" className="btn-link" onClick={() => go('light')}>
             Repetir los pasos
           </button>
         </>
@@ -339,22 +462,30 @@ export function WifiSetup(props: { bridge: Bridge; onDone: (deviceSsid?: string)
   )
 }
 
-/** Schematic main panel with its Wi-Fi key blinking (not a picture of the real product). */
-function PanelDrawing() {
+/** Schematic TermoWifi wall unit (TW501B/TW502N) with its Wi-Fi key light. */
+function PanelDrawing({ led, finger }: { led: Led; finger?: boolean }) {
   return (
     <div className="illustration panel-drawing" aria-hidden="true">
-      <svg viewBox="0 0 240 150" fill="none">
-        <rect x="50" y="12" width="140" height="126" rx="16" fill="var(--surface)" stroke="currentColor" strokeWidth="4" />
-        <rect x="68" y="30" width="104" height="38" rx="6" fill="var(--surface-2)" />
-        <circle cx="90" cy="102" r="12" stroke="currentColor" strokeWidth="3" opacity=".35" />
-        <circle cx="150" cy="102" r="12" stroke="currentColor" strokeWidth="3" opacity=".35" />
-        <g className="wifi-key">
-          <circle cx="120" cy="102" r="20" className="wifi-glow" />
-          <circle cx="120" cy="102" r="14" fill="var(--surface)" stroke="var(--heat)" strokeWidth="3" />
-          <path d="M112 100a11 11 0 0 1 16 0M115.5 104a6 6 0 0 1 9 0" stroke="var(--heat)" strokeWidth="2.6" strokeLinecap="round" />
-          <circle cx="120" cy="107.5" r="1.8" fill="var(--heat)" />
+      <svg viewBox="0 0 240 200" fill="none">
+        <rect x="68" y="8" width="104" height="184" rx="10" fill="#23262b" stroke="currentColor" strokeWidth="3" />
+        <text x="120" y="62" textAnchor="middle" fontSize="40" fontWeight="700" fill="#e9ecef" opacity=".9" fontFamily="ui-monospace, monospace">
+          21
+        </text>
+        <circle cx="90" cy="98" r="5" stroke="#adb5bd" strokeWidth="2" />
+        <path d="M90 116v14m-6-10 12 6m0-6-12 6" stroke="#adb5bd" strokeWidth="2" strokeLinecap="round" />
+        <path d="M150 92l-7 10h14zM143 120h14l-7 10z" stroke="#adb5bd" strokeWidth="2" strokeLinejoin="round" />
+        <path d="M114 146a8 8 0 1 0 12 0M120 141v7" stroke="#adb5bd" strokeWidth="2" strokeLinecap="round" />
+        <g>
+          <circle cx="150" cy="160" r="5" className={`led-dot led-${led}`} />
+          <path d="M142 176a11 11 0 0 1 16 0M145.5 180a6 6 0 0 1 9 0" stroke="#e9ecef" strokeWidth="2.2" strokeLinecap="round" />
+          <circle cx="150" cy="184" r="1.6" fill="#e9ecef" />
         </g>
-        <path d="M150 124l-12-14m0 0 2 9m-2-9 9 2" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" opacity=".5" />
+        {finger && (
+          <g className="finger">
+            <circle cx="150" cy="178" r="15" stroke="var(--heat)" strokeWidth="3" />
+            <path d="M196 196l-30-14m0 0 8 9m-8-9 12-1" stroke="var(--heat)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+          </g>
+        )}
       </svg>
     </div>
   )

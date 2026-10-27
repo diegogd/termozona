@@ -1269,22 +1269,63 @@ p {
   max-width: 220px;
 }
 
-.panel-drawing .wifi-glow {
-  fill: var(--heat);
-  opacity: 0.25;
-  animation: wifi-blink 1s steps(1, end) infinite;
+.led-dot.led-on,
+.led.led-on {
+  fill: #339af0;
+  background: #339af0;
+  box-shadow: 0 0 8px #339af0;
 }
 
-@keyframes wifi-blink {
+.led-dot.led-blink,
+.led.led-blink {
+  fill: #339af0;
+  background: #339af0;
+  animation: led-blink 0.9s steps(1, end) infinite;
+}
+
+.led-dot.led-off {
+  fill: #495057;
+}
+
+.led.led-off {
+  background: var(--surface-2);
+  border: 2px solid var(--line);
+}
+
+@keyframes led-blink {
   50% {
-    opacity: 0;
+    opacity: 0.15;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .panel-drawing .wifi-glow {
+  .led-dot.led-blink,
+  .led.led-blink {
     animation: none;
+    opacity: 0.6;
   }
+}
+
+.led-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.led {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.countdown {
+  font-size: 2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--heat);
+  margin: 0;
 }
 
 .ap-password {
