@@ -14,6 +14,8 @@ import {
 import {
   findConflicts,
   nextTransition,
+  scheduledSetpointNow,
+  differsFromSchedule,
   parseSchedule,
   routineEvents,
   serializeSchedule,
@@ -162,6 +164,19 @@ describe('schedule', () => {
     expect(zoneTransitions(evs, 0)).toHaveLength(0)
     const clash = [...evs, { ...evs[0], id: 'x', setpoint: 23 }]
     expect(findConflicts(clash)).toHaveLength(5)
+  })
+
+  it('knows what the schedule says now, to spot temperatures set by hand', () => {
+    const evs = routineEvents({ zones: [1], days: [true, true, true, true, true, false, false], wake: 420, sleep: 1320, comfort: 21, eco: 18 })
+    // Friday 15:00: inside the 07:00-22:00 period at 21°
+    expect(scheduledSetpointNow(evs, 1, new Date(2026, 9, 23, 15, 0))).toBe(21)
+    // Saturday 10:00: nothing on weekends, so Friday 22:00's 18° still holds
+    expect(scheduledSetpointNow(evs, 1, new Date(2026, 9, 24, 10, 0))).toBe(18)
+    expect(scheduledSetpointNow(evs, 0)).toBeUndefined()
+    expect(differsFromSchedule(25, 21)).toBe(true)
+    expect(differsFromSchedule(21, 21)).toBe(false)
+    expect(differsFromSchedule(undefined, 21)).toBe(false)
+    expect(differsFromSchedule(25, undefined)).toBe(false)
   })
 })
 

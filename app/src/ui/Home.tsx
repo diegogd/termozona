@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { AppState } from '../core/controller'
 import type { ZoneInfo } from '../core/installation'
 import { MODE_LABELS, isCoolingMode, isDemanding, type ModeNumber, type ZoneState } from '../core/protocol'
-import { formatMinute, nextTransition, whenLabel, type ScheduleEvent } from '../core/schedule'
+import { differsFromSchedule, formatMinute, nextTransition, scheduledSetpointNow, whenLabel, type ScheduleEvent } from '../core/schedule'
 import { AwayCard } from './Away'
 import { UpdateBanner } from './UpdateBanner'
 import { useAppState, useController } from './app-context'
@@ -57,7 +57,7 @@ export function statusText(z: ZoneView): { text: string; tone: '' | 'heat' | 'co
   return { text: 'Temperatura alcanzada', tone: '' }
 }
 
-function NextChange({ events, zone, off, away }: { events: ScheduleEvent[]; zone: number; off: boolean; away: boolean }) {
+function NextChange({ events, zone, off, away, setpoint }: { events: ScheduleEvent[]; zone: number; off: boolean; away: boolean; setpoint?: number }) {
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 60_000)
@@ -67,6 +67,15 @@ function NextChange({ events, zone, off, away }: { events: ScheduleEvent[]; zone
   const next = nextTransition(events, zone, now)
   if (!next) return <span>Sin horario</span>
   if (off) return <span>Tiene horario, pero está apagada: el horario no la enciende</span>
+  const scheduled = scheduledSetpointNow(events, zone, now)
+  if (differsFromSchedule(setpoint, scheduled)) {
+    return (
+      <span>
+        Puesta a mano (el horario marca {formatTemp(scheduled)}) hasta {whenLabel(next.inMinutes, now)} a las {formatMinute(next.minute)}; luego,{' '}
+        <b>{formatTemp(next.setpoint)}</b>
+      </span>
+    )
+  }
   return (
     <span>
       Próximo: <b>{formatTemp(next.setpoint)}</b> {whenLabel(next.inMinutes, now)} a las {formatMinute(next.minute)}
@@ -111,7 +120,7 @@ function ZoneCard({ z, events, onOpen, offline, away }: { z: ZoneView; events: S
         )}
       </div>
       <div className="zone-foot">
-        <NextChange events={events} zone={z.info.index} off={z.on === false} away={away} />
+        <NextChange events={events} zone={z.info.index} off={z.on === false} away={away} setpoint={z.setpoint} />
         <button type="button" className="btn-link" onClick={onOpen}>
           Detalles
         </button>

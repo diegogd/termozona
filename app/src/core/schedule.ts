@@ -186,6 +186,20 @@ export function scheduledSetpointAt(transitions: Transition[], weekMinute: numbe
   return current
 }
 
+/** What the schedule set last for a zone (and so what it "says" now), if it has any change. */
+export function scheduledSetpointNow(events: ScheduleEvent[], zone: number, now = new Date()): number | undefined {
+  return scheduledSetpointAt(zoneTransitions(events, zone), weekday(now) * 1440 + now.getHours() * 60 + now.getMinutes())
+}
+
+/**
+ * True when the zone is not at what the schedule set: changed by hand, or the
+ * schedule was edited in the middle of a period. The thermostat only applies a
+ * change at its time, so it stays like this until the next one.
+ */
+export function differsFromSchedule(setpoint: number | undefined, scheduled: number | undefined): boolean {
+  return setpoint !== undefined && scheduled !== undefined && Math.abs(setpoint - scheduled) >= 0.25
+}
+
 export interface Conflict {
   zone: number
   day: number

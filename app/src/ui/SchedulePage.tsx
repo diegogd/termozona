@@ -18,6 +18,7 @@ import {
   removeCoverage,
   routineEvents,
   scheduledSetpointAt,
+  differsFromSchedule,
   sleepsAfterMidnight,
   weekday,
   whenLabel,
@@ -109,7 +110,7 @@ function daySegments(transitions: ReturnType<typeof zoneTransitions>, day: numbe
   return segs
 }
 
-function WeekView({ events, zone }: { events: ScheduleEvent[]; zone: number }) {
+function WeekView({ events, zone, setpoint, onApply }: { events: ScheduleEvent[]; zone: number; setpoint?: number; onApply?: (c: number) => void }) {
   const transitions = zoneTransitions(events, zone)
   const now = new Date()
   const today = weekday(now)
@@ -132,6 +133,19 @@ function WeekView({ events, zone }: { events: ScheduleEvent[]; zone: number }) {
             </span>
           )}
         </p>
+      )}
+      {current?.sp !== undefined && next && differsFromSchedule(setpoint, current.sp) && (
+        <div className="notice warn stack" style={{ display: 'flex', flexDirection: 'column' }}>
+          <span>
+            Ahora la zona está a <b>{formatTemp(setpoint)}</b>. El horario solo cambia la temperatura a sus horas: no la pondrá a {formatTemp(current.sp)}{' '}
+            hasta el próximo cambio ({whenLabel(next.inMinutes, now)} a las {formatMinute(next.minute)}, a {formatTemp(next.setpoint)}).
+          </span>
+          {onApply && (
+            <button type="button" className="btn" onClick={() => onApply(current.sp!)}>
+              Poner {formatTemp(current.sp)} ahora
+            </button>
+          )}
+        </div>
       )}
       <div className="week">
         {DAY_LABELS.map((label, day) => {
@@ -321,7 +335,8 @@ function EventEditor(props: {
       </label>
       <p className="small muted">
         {describeDays(ev.days)}, a las {formatMinute(ev.minute)}, la temperatura deseada de {joinNames(zonesToShow.map(name)) || '…'} pasará a{' '}
-        {formatTemp(ev.setpoint)} y se mantendrá hasta el siguiente cambio.
+        {formatTemp(ev.setpoint)} y se mantendrá hasta el siguiente cambio. Si ahora ya estás dentro de ese tramo, la temperatura actual no cambia
+        hasta la próxima hora del horario.
       </p>
     </Sheet>
   )
@@ -718,7 +733,12 @@ export function SchedulePage({ initialZone }: { initialZone?: number }) {
         </div>
       ) : (
         <>
-          <WeekView events={events} zone={zone} />
+          <WeekView
+            events={events}
+            zone={zone}
+            setpoint={s.away ? undefined : zoneViews(s).find((v) => v.info.index === zone)?.setpoint}
+            onApply={s.link === 'online' ? (sp) => c.setSetpoint(zone, sp) : undefined}
+          />
           <section className="stack" aria-label={`Cambios de ${zoneName(zone)}`}>
             {zoneEvents.map((ev) => {
               const others = ev.zones.filter((z) => z !== zone)

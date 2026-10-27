@@ -843,7 +843,9 @@ p {
   box-shadow: var(--shadow);
 }
 
-.event.disabled {
+/* Dim the content, not the row: its background must stay opaque so the
+   swipe-to-delete button underneath does not show through. */
+.event.disabled > * {
   opacity: 0.55;
 }
 
@@ -1214,6 +1216,8 @@ p {
 .swipe > .event {
   position: relative;
   box-shadow: none;
+  /* .swipe already rounds and clips; a second radius lets the red button bleed at the corners. */
+  border-radius: 0;
 }
 
 .swipe-delete {

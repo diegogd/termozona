@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { MODE_LABELS, type ModeNumber } from '../core/protocol'
-import { DAY_NAMES, formatMinute, nextTransition, weekday, whenLabel, zoneTransitions } from '../core/schedule'
+import { DAY_NAMES, differsFromSchedule, formatMinute, nextTransition, scheduledSetpointNow, weekday, whenLabel, zoneTransitions } from '../core/schedule'
 import { useAppState, useController } from './app-context'
 import { Field, Illustration, Sheet, Switch, TempStepper, formatTemp, relativeTime, tempTone } from './components'
 import { statusText, zoneViews } from './Home'
@@ -24,6 +24,8 @@ export function ZoneSheet({ zone, onClose, onEditSchedule }: { zone: number; onC
   const today = weekday(new Date())
   const todays = zoneTransitions(s.schedule?.events ?? [], zone).filter((t) => t.day === today)
   const next = nextTransition(s.schedule?.events ?? [], zone)
+  const scheduled = s.away ? undefined : scheduledSetpointNow(s.schedule?.events ?? [], zone)
+  const byHand = differsFromSchedule(z.setpoint, scheduled)
 
   return (
     <Sheet title={z.info.name} onClose={onClose}>
@@ -61,10 +63,22 @@ export function ZoneSheet({ zone, onClose, onEditSchedule }: { zone: number; onC
             ))}
           </div>
           {z.pendingSetpoint && <p className="center small muted">Enviando al termostato…</p>}
-          {next && z.on !== false && (
+          {next && z.on !== false && !byHand && (
             <p className="center small muted">
               Se mantendrá hasta {whenLabel(next.inMinutes)} a las {formatMinute(next.minute)}, cuando el horario la pondrá a {formatTemp(next.setpoint)}.
             </p>
+          )}
+          {next && z.on !== false && byHand && (
+            <div className="notice info stack" style={{ display: 'flex', flexDirection: 'column' }}>
+              <span>
+                El horario marca ahora {formatTemp(scheduled)}, pero la zona está a <b>{formatTemp(z.setpoint)}</b>. El horario solo cambia la temperatura a
+                sus horas, así que <b>seguirá a {formatTemp(z.setpoint)} hasta {whenLabel(next.inMinutes)} a las {formatMinute(next.minute)}</b>, cuando
+                pasará a {formatTemp(next.setpoint)}.
+              </span>
+              <button type="button" className="btn" disabled={offline} onClick={() => c.setSetpoint(zone, scheduled!)}>
+                Volver al horario: {formatTemp(scheduled)} ahora
+              </button>
+            </div>
           )}
         </div>
       )}
